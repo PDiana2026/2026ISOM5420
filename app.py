@@ -1,3 +1,6 @@
-import stremlit as st5240
+import stremlit as st
 
+st.write("ISOM5240")
+st.write("ISOM5240")
+st.write("ISOM5240")
 st.write("ISOM5240")
