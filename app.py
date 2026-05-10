@@ -5,7 +5,7 @@ Storytelling Application using Hugging Face Pipelines
 Pipeline:
   img2text   →  Salesforce/blip-image-captioning-base
   text2story →  roneneldan/TinyStories-33M   (trained on children's stories)
-  text2audio →  kakao-enterprise/vits-ljs
+  text2audio →  Matthijs/mms-tts-eng
 
 Safety:
   • Taboo-word list guards both caption prompt and generated story output.
@@ -22,52 +22,29 @@ import numpy as np
 import streamlit as st
 from transformers import pipeline
 
-# ══════════════════════════════════════════════════════════════════════════════
-# PAGE CONFIG (Must be the very first Streamlit command)
-# ══════════════════════════════════════════════════════════════════════════════
-st.set_page_config(
-    page_title="StoryMagic ✨",
-    page_icon="🐠",
-    layout="centered",
-)
-
-# ══════════════════════════════════════════════════════════════════════════════
-# MODEL CACHING (Prevents Memory Crashes)
-# ══════════════════════════════════════════════════════════════════════════════
-@st.cache_resource
-def load_models():
-    caption_model = pipeline("image-to-text", model="Salesforce/blip-image-captioning-base")
-    story_model = pipeline(
-        "text-generation",
-        model="roneneldan/TinyStories-33M",
-        max_new_tokens=160,
-        temperature=0.75,
-        top_p=0.92,
-        repetition_penalty=1.3,
-        do_sample=True,
-    )
-    tts_model = pipeline("text-to-speech", model="kakao-enterprise/vits-ljs")
-    return caption_model, story_model, tts_model
-
-# Load pipelines into global variables once
-captioner, story_pipe, tts_pipe = load_models()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CHILD-SAFETY CONFIGURATION
 # ══════════════════════════════════════════════════════════════════════════════
+
 TABOO_WORDS: set = {
+    # Violence / harm
     "murder", "kill", "killed", "killing", "kills", "killer",
     "death", "dead", "die", "dying", "dies", "died",
     "blood", "gore", "corpse", "stab", "shoot", "gun", "knife",
     "weapon", "bomb", "explosion", "war", "battle",
     "attack", "abuse", "rape", "terror", "terrorist", "suicide",
     "wound", "injury", "injured",
+    # Adult / mature content
     "sex", "sexy", "naked", "nude", "porn",
     "pregnant", "pregnancy",
+    # Substances
     "drug", "drugs", "alcohol", "beer", "wine", "vodka",
     "cigarette", "smoke", "smoking",
+    # Profanity / hate speech
     "damn", "hell", "ass", "crap", "bastard", "bitch",
     "shit", "fuck", "hate", "evil",
+    # Frightening / demeaning
     "devil", "demon", "horror", "ghost", "creepy",
     "idiot", "stupid", "dumb", "ugly",
 }
@@ -90,17 +67,35 @@ SAFE_FALLBACK_STORY: str = (
     "He snuggled into his cosy bed, dreaming of tomorrow's adventures. The End."
 )
 
+
 # ══════════════════════════════════════════════════════════════════════════════
-# HELPERS
+# HELPER — TABOO CHECKER
 # ══════════════════════════════════════════════════════════════════════════════
+
 def contains_taboo(text: str) -> bool:
+    """
+    Return True if *text* contains any word from TABOO_WORDS.
+    Uses whole-word, case-insensitive regex so 'skill' is never blocked
+    by 'kill', for example.
+    """
     lowered = text.lower()
     for word in TABOO_WORDS:
         if re.search(rf"\b{re.escape(word)}\b", lowered):
             return True
     return False
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# HELPER — WORD-COUNT ENFORCEMENT (50-100 words)
+# ══════════════════════════════════════════════════════════════════════════════
+
 def enforce_word_count(text: str) -> str:
+    """
+    Guarantee the returned story is between MIN_WORDS and MAX_WORDS words.
+
+    - Too long  → trim at the last sentence boundary inside the word limit.
+    - Too short → append a cheerful closing sentence, then re-trim if needed.
+    """
     def _trim(s: str) -> str:
         words = s.split()
         if len(words) <= MAX_WORDS:
@@ -114,28 +109,56 @@ def enforce_word_count(text: str) -> str:
         text = _trim(text.rstrip() + _PADDING)
     return text
 
-def audio_to_wav_bytes(audio_array: np.ndarray, sample_rate: int) -> bytes:
-    arr = np.squeeze(audio_array).astype(np.float32)
-    peak = np.abs(arr).max()
-    if peak > 0:
-        arr /= peak
-    pcm = (arr * 32767).astype(np.int16).tobytes()
-    buf = io.BytesIO()
-    with wave.open(buf, "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(sample_rate)
-        wf.writeframes(pcm)
-    buf.seek(0)
-    return buf.read()
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PIPELINE STAGE FUNCTIONS
+# STAGE 1 — IMAGE → CAPTION
 # ══════════════════════════════════════════════════════════════════════════════
+
 def img2text(url: str) -> str:
+    """
+    Convert an uploaded image to a plain-text description.
+
+    Model : Salesforce/blip-image-captioning-base
+    Args  : url – local file path to the saved image.
+    Returns a short descriptive caption string.
+    """
+    captioner = pipeline(
+        "image-to-text",
+        model="Salesforce/blip-image-captioning-base",
+    )
     return captioner(url)[0]["generated_text"]
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# STAGE 2 — CAPTION → CHILDREN'S STORY (50-100 words, child-safe)
+# ══════════════════════════════════════════════════════════════════════════════
+
 def text2story(caption: str) -> tuple:
+    """
+    Expand a caption into a child-friendly story of 50-100 words.
+
+    Model : roneneldan/TinyStories-33M
+        Trained exclusively on synthetic short stories for children aged 3-4,
+        ensuring simple vocabulary and gentle, positive themes by design.
+
+    Safety workflow:
+      1. Substitute a safe prompt if the caption contains taboo words.
+      2. Generate, enforce word count, check for taboo content.
+      3. Retry up to MAX_REGEN_ATTEMPTS times.
+      4. If all attempts fail, return the fixed safe fallback story.
+
+    Returns : (story_text: str, used_fallback: bool)
+    """
+    story_pipe = pipeline(
+        "text-generation",
+        model="roneneldan/TinyStories-33M",
+        max_new_tokens=160,
+        temperature=0.75,
+        top_p=0.92,
+        repetition_penalty=1.3,
+        do_sample=True,
+    )
+
     safe_caption = (
         caption if not contains_taboo(caption)
         else "a friendly little animal playing in a sunny meadow"
@@ -147,14 +170,64 @@ def text2story(caption: str) -> tuple:
         story = enforce_word_count(raw)
         if not contains_taboo(story):
             return story, False
+
+    # All attempts contained taboo content — use fixed safe fallback
     return SAFE_FALLBACK_STORY, True
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# STAGE 3 — STORY → AUDIO
+# ══════════════════════════════════════════════════════════════════════════════
+
+# After
 def text2audio(story_text: str) -> dict:
+
+    tts_pipe = pipeline(
+        "text-to-speech",
+        model="kakao-enterprise/vits-ljs",
+    )
     return tts_pipe(story_text)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# HELPER — NUMPY AUDIO → WAV BYTES  (stdlib wave, no scipy needed)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def audio_to_wav_bytes(audio_array: np.ndarray, sample_rate: int) -> bytes:
+    """
+    Encode a numpy float audio array as 16-bit mono PCM WAV bytes using
+    Python's built-in wave module (no extra dependencies required).
+    Normalises to [-1, 1] before quantising to avoid clipping.
+    """
+    arr = np.squeeze(audio_array).astype(np.float32)
+    peak = np.abs(arr).max()
+    if peak > 0:
+        arr /= peak
+    pcm = (arr * 32767).astype(np.int16).tobytes()
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)         # mono
+        wf.setsampwidth(2)         # 16-bit = 2 bytes per sample
+        wf.setframerate(sample_rate)
+        wf.writeframes(pcm)
+    buf.seek(0)
+    return buf.read()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE CONFIG
+# ══════════════════════════════════════════════════════════════════════════════
+
+st.set_page_config(
+    page_title="StoryMagic ✨",
+    page_icon="🐠",
+    layout="centered",
+)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # GLOBAL CSS — Ocean Adventure theme
 # ══════════════════════════════════════════════════════════════════════════════
+
 st.markdown(
     """
     <style>
@@ -188,11 +261,11 @@ st.markdown(
 
     @keyframes float {
         0%, 100% { transform: translateY(0);     }
-        50%      { transform: translateY(-10px); }
+        50%       { transform: translateY(-10px); }
     }
     @keyframes sway {
         0%, 100% { transform: rotate(-4deg); }
-        50%      { transform: rotate( 4deg); }
+        50%       { transform: rotate( 4deg); }
     }
     @keyframes popIn {
         0%   { opacity: 0; transform: scale(0.75) translateY(20px); }
@@ -370,9 +443,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
 # ══════════════════════════════════════════════════════════════════════════════
 # HERO
 # ══════════════════════════════════════════════════════════════════════════════
+
 st.markdown(
     """
     <div class="hero-creatures">
@@ -415,9 +490,12 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
 # ══════════════════════════════════════════════════════════════════════════════
-# FILE UPLOAD & PIPELINE EXECUTION
+# FILE UPLOAD
 # ══════════════════════════════════════════════════════════════════════════════
+
+# After
 tab1, tab2 = st.tabs(["🖼️ Upload a Picture", "📷 Take a Photo"])
 
 with tab1:
@@ -429,10 +507,16 @@ with tab1:
 with tab2:
     camera_file = st.camera_input("Point your camera and snap! 📸")
 
+# Whichever tab the user used, treat it the same way downstream
 uploaded_file = uploaded_file or camera_file
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PIPELINE EXECUTION
+# ══════════════════════════════════════════════════════════════════════════════
 
 if uploaded_file is not None:
 
+    # Save locally so Hugging Face models can read from disk
     file_path = uploaded_file.name
     with open(file_path, "wb") as fh:
         fh.write(uploaded_file.getvalue())
@@ -514,19 +598,14 @@ if uploaded_file is not None:
         """,
         unsafe_allow_html=True,
     )
-    
     st.audio(wav_bytes, format="audio/wav")
-    st.download_button(
-        label="⬇️ Download My Story Audio",
-        data=wav_bytes,
-        file_name="my_story.wav",
-        mime="audio/wav",
-    )
     st.success("🎉 All done! Your story is ready — enjoy reading and listening! 🌊")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FOOTER
 # ══════════════════════════════════════════════════════════════════════════════
+
 st.markdown(
     """
     <div class="footer">
