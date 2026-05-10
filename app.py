@@ -179,17 +179,12 @@ def text2story(caption: str) -> tuple:
 # STAGE 3 — STORY → AUDIO
 # ══════════════════════════════════════════════════════════════════════════════
 
+# After
 def text2audio(story_text: str) -> dict:
-    """
-    Convert the generated story to spoken audio.
 
-    Model : Matthijs/mms-tts-eng  (Facebook MMS English TTS)
-    Args  : story_text – the story string to synthesise.
-    Returns a dict with keys 'audio' (numpy float32 array) and 'sampling_rate'.
-    """
     tts_pipe = pipeline(
         "text-to-speech",
-        model="Matthijs/mms-tts-eng",
+        model="kakao-enterprise/vits-ljs",
     )
     return tts_pipe(story_text)
 
@@ -500,11 +495,19 @@ st.markdown(
 # FILE UPLOAD
 # ══════════════════════════════════════════════════════════════════════════════
 
-uploaded_file = st.file_uploader(
-    "🖼️ Drop your favourite picture here! (JPG · PNG · WEBP)",
-    type=["jpg", "jpeg", "png", "webp"],
-)
+tab1, tab2 = st.tabs(["🖼️ Upload a Picture", "📷 Take a Photo"])
 
+with tab1:
+    uploaded_file = st.file_uploader(
+        "Drop your favourite picture here! (JPG · PNG · WEBP)",
+        type=["jpg", "jpeg", "png", "webp"],
+    )
+
+with tab2:
+    camera_file = st.camera_input("Point your camera and snap! 📸")
+
+# Whichever tab the user used, treat it the same way downstream
+uploaded_file = uploaded_file or camera_file
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PIPELINE EXECUTION
@@ -594,8 +597,15 @@ if uploaded_file is not None:
         """,
         unsafe_allow_html=True,
     )
-    st.audio(wav_bytes, format="audio/wav")
-    st.success("🎉 All done! Your story is ready — enjoy reading and listening! 🌊")
+
+st.audio(wav_bytes, format="audio/wav")
+st.download_button(
+    label="⬇️ Download My Story Audio",
+    data=wav_bytes,
+    file_name="my_story.wav",
+    mime="audio/wav",
+)
+st.success("🎉 All done! Your story is ready — enjoy reading and listening! 🌊")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
