@@ -596,9 +596,15 @@ if uploaded_file is not None:
         """,
         unsafe_allow_html=True,
     )
+  
     st.audio(wav_bytes, format="audio/wav")
+    st.download_button(
+        label="⬇️ Download My Story Audio",
+        data=wav_bytes,
+        file_name="my_story.wav",
+        mime="audio/wav",
+    )
     st.success("🎉 All done! Your story is ready — enjoy reading and listening! 🌊")
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FOOTER
