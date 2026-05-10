@@ -179,12 +179,10 @@ def text2story(caption: str) -> tuple:
 # STAGE 3 — STORY → AUDIO
 # ══════════════════════════════════════════════════════════════════════════════
 
-# After
 def text2audio(story_text: str) -> dict:
-
     tts_pipe = pipeline(
         "text-to-speech",
-        model="kakao-enterprise/vits-ljs",
+        model="Matthijs/mms-tts-eng",
     )
     return tts_pipe(story_text)
 
