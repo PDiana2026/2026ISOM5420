@@ -4,3 +4,4 @@ torch
 scipy
 numpy
 Pillow
+phonemizer
