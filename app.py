@@ -224,7 +224,7 @@ def audio_to_wav_bytes(audio_array: np.ndarray, sample_rate: int) -> bytes:
 # ══════════════════════════════════════════════════════════════════════════════
 
 st.set_page_config(
-    page_title="StoryMagic ✨",
+    page_title="StoryTeller ✨",
     page_icon="🐠",
     layout="centered",
 )
@@ -459,7 +459,7 @@ st.markdown(
         <span>🐠</span><span>🐙</span><span>🐬</span><span>🐡</span><span>⭐</span>
     </div>
     <div class="hero-box">
-        <div class="hero-title">✨ StoryMagic ✨</div>
+        <div class="hero-title">✨ StoryTeller ✨</div>
         <p class="hero-sub">
             Upload any picture &amp; watch a fairy tale appear — then hear it read aloud! 🎧🌊
         </p>
