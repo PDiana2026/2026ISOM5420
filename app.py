@@ -598,7 +598,7 @@ if uploaded_file is not None:
         unsafe_allow_html=True,
     )
 
-st.audio(wav_bytes, format="audio/wav")
+st.audio(io.BytesIO(wav_bytes), format="audio/wav")
 st.download_button(
     label="⬇️ Download My Story Audio",
     data=wav_bytes,
