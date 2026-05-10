@@ -1,16 +1,4 @@
-Here is the complete, fully corrected, and highly optimized version of your Streamlit app.
 
-You can completely delete everything in your current `app.py` file and copy-paste this entire block.
-
-### **What is included in this final version:**
-
-1. **Efficiency (Caching):** The AI models are now wrapped in `@st.cache_resource` at the top of the file. They will only load once when the app starts, making the app lightning fast when you upload an image.
-2. **Crash Fix (Indentation):** The `st.audio` and `st.download_button` at the very bottom are now properly indented so they only run *after* a picture is uploaded and the audio is successfully generated.
-3. **Audio Fix (NumPy to WAV):** It perfectly utilizes your custom `audio_to_wav_bytes` function so Streamlit can read the raw audio data without throwing the `wav_bytes` error.
-
-Here is your final code:
-
-```python
 """
 ISOM5240 Individual Assignment
 Storytelling Application using Hugging Face Pipelines
