@@ -4,3 +4,6 @@ torch
 scipy
 numpy
 Pillow
+io
+re
+wave
